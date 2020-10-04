@@ -10,9 +10,6 @@ from heapq import heappop, heappush
 import numpy as np
 from kaggle_environments.envs.halite.helpers import *
 from tqdm import tqdm_notebook as tqdm
-
-LOG = False
-LOG_FLOW_ADD_EDGE = True
 MAX_STEPS = 400
 ATTACK_START_STEP = 100
 ATTACK_END_STEP = 300
@@ -26,10 +23,6 @@ ACTIONS = [ShipAction.NORTH, ShipAction.EAST, ShipAction.SOUTH,
 MAX_SHIP_NUM = 50
 STOP_SPAWN = 300
 rnd = random.Random(time.time())
-
-if LOG:
-    log_filename_time_prefix = datetime.datetime.now().strftime('%m%d_%H%M%S')
-    log_filename = f"{log_filename_time_prefix}_{rnd.randint(0, 10000)}.log"
 
 progress_bar = None
 
@@ -149,14 +142,6 @@ def halite_per_turn(carrying, halite, travel, min_mine=1):
     mined = carrying + (1 - .75**turns) * halite
     return mined / (travel + turns)
 
-
-def log(message):
-    if not LOG:
-        return
-    with open(f"logs/{log_filename}", 'a') as log_file:
-        log_file.write(message + "\n")
-
-
 def spawn_step(ship: Ship):
     return int(ship.id.split('-')[0])
 
@@ -175,16 +160,6 @@ def agent(obs, config):
     else:
         EXIT_TIME = board.configuration.act_timeout * 0.8
 
-    def log_time(message, logging=True):
-        elapsed_time = time.time() - start_time
-        if logging:
-            log(f"time: {elapsed_time: .5f} {message}")
-        if elapsed_time >= EXIT_TIME:
-            print(
-                f"Step {obs.step} time over: {elapsed_time}, {message}", file=sys.stderr)
-            return True
-        return False
-
     me = board.current_player
     BOARD_SIZE = board.configuration.size 
 
@@ -196,11 +171,6 @@ def agent(obs, config):
 
     if not initialized:
         initialized = True
-        if LOG:
-            print(f"player {me.id}'s log filename: {log_filename}")
-        log(f"player_id: {me.id}")
-
-    log(f"step {obs.step + 1}")
     index_to_cell = {point.to_index(BOARD_SIZE): cell for point,
                      cell in board.cells.items()}
     index_to_ship_max_cargo: Dict[int, (int, int)] = {}
@@ -262,8 +232,6 @@ def agent(obs, config):
             return SHIP_LOSE
         return SHIP_DRAW
 
-    if log_time(""):
-        return me.next_actions
     for ship_id, ship in board.ships.items():
         if ship.player_id != me.id:
             update_index_to_ship_max_cargo(
@@ -358,13 +326,12 @@ def agent(obs, config):
 
     RANGE_CAMP = math.ceil(math.sqrt(
         5 * len(me.ships) / max(1, len(me.shipyards)) / 2))
-    log(f"{len(me.ships)},{len(me.shipyards)} => RANGE_CAMP: {RANGE_CAMP}")
+   
     CAMP_HALITE = 100
 
-    log("index_to_ship_max_cargo")
+    
     for k, v in index_to_ship_max_cargo.items():
-        log(f"  {index_to_xy(k)} {v}")
-
+        
     def is_minable_halite_area_in_attack_mode(x, y):
         if distance_to_my_nearest_shipyard[x][y] <= 2:
             return distance_to_opponent_nearest_ship[x][y] >= 1
@@ -452,8 +419,7 @@ def agent(obs, config):
 
     tmp_halite = me.halite
 
-    log(f"len(me.ships): {len(me.ships)}")
-
+    
 
     def should_ship_convert():
         if len(me.ships) < 12:
@@ -481,9 +447,6 @@ def agent(obs, config):
         return len(me.shipyards) < n
 
     ship_convert = should_ship_convert()
-    log(f"ship_convert {ship_convert}")
-    if log_time("cell scoring start"):
-        return me.next_actions
 
     cell_score = [[0 for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
     cell_score_and_index = []
@@ -491,7 +454,6 @@ def agent(obs, config):
     RANGE_DISTANCE = 3
     for ax in range(BOARD_SIZE):
         for ay in range(BOARD_SIZE):
-            log(f"({ax}, {ay}) cell halite: {index_to_cell[xy_to_index(ax,ay)].halite}, ship halite: {index_to_cell[xy_to_index(ax,ay)].ship.halite if index_to_cell[xy_to_index(ax,ay)].ship else None}")
             if is_opposite_ship_or_shipyard(xy_to_index(ax, ay)):
                 continue
             for dx in range(-RANGE_DISTANCE, RANGE_DISTANCE + 1):
@@ -508,12 +470,6 @@ def agent(obs, config):
             cell_score_and_index.append((cell_score[ax][ay], (ax, ay)))
     cell_score_and_index.sort()
     cell_score_and_index.reverse()
-    log(f"cell_score_and_index: {cell_score_and_index[:5]}")
-    if log_time("cell scoring end"):
-        return me.next_actions
-
-    if log_time("shipyard start"):
-        return me.next_actions
 
     score_and_shipyard_ids = []
     for shipyard in me.shipyards:
@@ -545,8 +501,7 @@ def agent(obs, config):
         else:
             shipyard.next_action = None
 
-    if log_time("shipyard end"):
-        return me.next_actions
+   
     ship_id_to_mcf_node_id = {}
     mcf_id_to_ship_id = {}
     for ship_index, ship_id in enumerate(me.ship_ids):
@@ -610,15 +565,12 @@ def agent(obs, config):
 
     mcf = build_mcf(True)
 
-    if log_time("flow1 adding edge start"):
-        return me.next_actions
-
+    
     def fast_hash(x):
         return x * 107 % 31
 
     for ship in me.ships:
-        if log_time("flow1 ship loop", False):
-            return me.next_actions
+       
         ship_index = ship_id_to_mcf_node_id[ship.id]
         if obs.step <= 15:
             index_to_info = bfs(ship, ship.position, MAX_BFS_DISTANCE * 2)
@@ -684,19 +636,8 @@ def agent(obs, config):
             if expected_halite > 0:
                 mcf.add_edge(ship_index, ship_num + target_point_index,
                              1, calc_cost(-expected_halite))
-                if LOG_FLOW_ADD_EDGE:
-                    log(
-                        f"flow1 add edge: {ship.position} => {target_point}, expected_halite {expected_halite}")
-
-    if log_time("flow1 adding edge end"):
-        return me.next_actions
-
-    log(f"flow1 edge num: {mcf.edge_num}")
+                
     if mcf.flow(start_mcf_node_id, goal_mcf_node_id, ship_num, start_time, EXIT_TIME) == MinCostFlow.ABORT:
-        log_time("abort flow1")
-        return me.next_actions
-
-    if log_time("flow1 end"):
         return me.next_actions
 
     mcf_node_id_to_target_index_and_score = {}
@@ -710,17 +651,11 @@ def agent(obs, config):
                 mcf_node_id_to_target_index_and_score[ship_index] = (
                     next_index, cost)
                 next_point = Point.from_index(next_index, BOARD_SIZE)
-                log(
-                    f"flow1: id {ship_id}, halite {ship.halite}, {ship.position} => target {next_point}, cost {cost}")
 
     mcf = build_mcf()
 
-    if log_time("flow2 adding edge start"):
-        return me.next_actions
-
     for ship in me.ships:
-        if log_time("flow2 ship loop", False):
-            return me.next_actions
+        
 
         ship_id = ship.id
         ship_node_id = ship_id_to_mcf_node_id[ship_id]
@@ -736,33 +671,23 @@ def agent(obs, config):
                     target_point.y] if distance_to_my_nearest_shipyard[target_point.x][target_point.y] != INF else 0
                 mcf.add_edge(
                     ship_node_id, ship_num + target_point_index, 1, calc_cost(cost))
-                if LOG_FLOW_ADD_EDGE:
-                    log(
-                        f"flow2 add edge: {ship.position} => {target_point}, cost {cost}, distance 1")
+                
             elif check_max_cargo_condition(ship.halite, target_point_index) == SHIP_DRAW:
                 mcf.add_edge(
                     ship_node_id, ship_num + target_point_index, 1, calc_cost(BASE_COST/2-1))
-                if LOG_FLOW_ADD_EDGE:
-                    log(
-                        f"flow2 add edge: {ship.position} => {target_point}, cost {BASE_COST/2-1}, distance 1")
+                
             elif not is_opposite_ship_or_shipyard(target_point_index) and not (target_cell.shipyard and target_cell.shipyard.player_id == me.id):
                 mcf.add_edge(
                     ship_node_id, ship_num + target_point_index, 1, calc_cost(BASE_COST/2))
-                if LOG_FLOW_ADD_EDGE:
-                    log(
-                        f"flow2 add edge: {ship.position} => {target_point}, cost {BASE_COST/2}, distance 1")
+                
             elif target_point_index in index_to_ship_max_cargo and index_to_ship_max_cargo[target_point_index][1] == 1 and not (target_cell.shipyard and target_cell.shipyard.player_id == me.id):
                 mcf.add_edge(
                     ship_node_id, ship_num + target_point_index, 1, calc_cost(BASE_COST/2+1))
-                if LOG_FLOW_ADD_EDGE:
-                    log(
-                        f"flow2 add edge: {ship.position} => {target_point}, cost {BASE_COST/2+1}, distance 1")
+                
             else:
                 mcf.add_edge(
                     ship_node_id, ship_num + target_point_index, 1, calc_cost(BASE_COST))
-                if LOG_FLOW_ADD_EDGE:
-                    log(
-                        f"flow2 add edge: {ship.position} => {target_point}, cost {BASE_COST}, distance 1")
+                
 
         if check_max_cargo_condition(ship.halite, ship_index) == SHIP_WIN:
             if ATTACK_START_STEP <= obs.step < ATTACK_END_STEP:
@@ -772,33 +697,25 @@ def agent(obs, config):
                         ship.position.y] if distance_to_my_nearest_shipyard[ship.position.x][ship.position.y] != INF else 0
                     mcf.add_edge(
                         ship_node_id, ship_num + ship_index, 1, calc_cost(cost))
-                    if LOG_FLOW_ADD_EDGE:
-                        log(
-                            f"flow2 add edge: {ship.position} => {ship.position}, cost {cost}, distance 0")
+                    
                 else:
                     mcf.add_edge(
                         ship_node_id, ship_num + ship_index, 1, calc_cost(BASE_COST/3))
-                    if LOG_FLOW_ADD_EDGE:
-                        log(
-                            f"flow2 add edge: {ship.position} => {ship.position}, cost {BASE_COST/3}, distance 0")
+                    
             else:
                 cost = distance_to_my_nearest_shipyard[ship.position.x][
                     ship.position.y] if distance_to_my_nearest_shipyard[ship.position.x][ship.position.y] != INF else 0
                 mcf.add_edge(
                     ship_node_id, ship_num + ship_index, 1, calc_cost(cost))
-                if LOG_FLOW_ADD_EDGE:
-                    log(
-                        f"flow2 add edge: {ship.position} => {ship.position}, cost {cost}, distance 0")
+                
         elif check_max_cargo_condition(ship.halite, ship_index) == SHIP_DRAW and index_to_cell[ship_index].shipyard:
             mcf.add_edge(
                 ship_node_id, ship_num + ship_index, 1, calc_cost(0))
-            if LOG_FLOW_ADD_EDGE:
-                log(f"flow2 add edge: {ship.position} => {ship.position}, cost 0, distance 0")
+           
         else:
             mcf.add_edge(
                 ship_node_id, ship_num + ship_index, 1, calc_cost(BASE_COST))
-            if LOG_FLOW_ADD_EDGE:
-                log(f"flow2 add edge: {ship.position} => {ship.position}, cost {BASE_COST}, distance 0")
+            
 
         if ship_node_id in mcf_node_id_to_target_index_and_score:
             target_index, score = mcf_node_id_to_target_index_and_score[ship_node_id]
@@ -820,25 +737,18 @@ def agent(obs, config):
 
                 if next_point_index in index_to_info:
                     distance, _, _ = index_to_info[next_point_index]
-                    log(f"{ship.position} {next_point} {distance}")
+                    
                     if check_max_cargo_condition(ship.halite, next_point_index) == SHIP_WIN:
 
                         mcf.add_edge(ship_node_id, ship_num + next_point_index,
                                      1, calc_cost(score / (distance+1)))
-                        if LOG_FLOW_ADD_EDGE:
-                            log(
-                                f"flow2 add edge: {ship.position} => {next_point}, cost {score / (distance+1)}, distance {distance}")
-
-    if log_time("flow2 adding edge end"):
-        return me.next_actions
-
-    log(f"flow2 edge num: {mcf.edge_num}")
+                        
+    
     if mcf.flow(start_mcf_node_id, goal_mcf_node_id, ship_num, start_time, EXIT_TIME) == MinCostFlow.ABORT:
-        log_time("abort flow2")
+      
         return me.next_actions
 
-    if log_time("flow2 end"):
-        return me.next_actions
+    
 
     mcf_node_id_to_target_index_and_score = {}
     for ship_index in range(len(mcf.G)):
@@ -851,8 +761,7 @@ def agent(obs, config):
                 mcf_node_id_to_target_index_and_score[ship_index] = (
                     next_index, cost)
                 next_point = Point.from_index(next_index, BOARD_SIZE)
-                log(
-                    f"flow2: id {ship_id}, halite {ship.halite}, {ship.position} => next {next_point}, cost {cost}")
+                
 
     for ship_index, (next_position_id, score) in mcf_node_id_to_target_index_and_score.items():
         ship_id = mcf_id_to_ship_id[ship_index]
@@ -883,7 +792,7 @@ def agent(obs, config):
 
     if ship_convert:
         v = []
-        log(f"convert: ")
+        
         for ship in me.ships:
             if index_to_cell[ship.position.to_index(BOARD_SIZE)].shipyard:
                 continue
@@ -891,7 +800,7 @@ def agent(obs, config):
             if 20 <= obs.step and distance_to_my_nearest_ship[ship.position.x][ship.position.y] != INF and distance_to_opponent_nearest_ship[ship.position.x][ship.position.y] <= distance_to_my_nearest_ship[ship.position.x][ship.position.y]:
                 continue
 
-            log(f"  candidate: {ship.id} {ship.position} halite {ship.halite}")
+            
             if ship.halite + tmp_halite >= 500:
                 if len(distances_to_my_nearest_shipyard[ship.position.x][ship.position.y]) == 0:
                     v.append((cell_score[ship.position.x]
@@ -908,7 +817,7 @@ def agent(obs, config):
 
         v.sort()
         v.reverse()
-        log(f"v {v}")
+        
 
         if len(v):
             distance, ship_id = v[0]
@@ -917,9 +826,6 @@ def agent(obs, config):
                 tmp_halite -= 500 - ship.halite
                 ship.next_action = ShipAction.CONVERT
 
-    log(str(me.next_actions))
-
-    log(f"time: {time.time() - start_time}")
-    log("")
+    
 
     return me.next_actions
